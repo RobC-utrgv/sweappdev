@@ -62,6 +62,42 @@ fn register_user(app: tauri::AppHandle, username: String, password: String) -> R
 }
 
 #[tauri::command]
+fn delete_user(app: tauri::AppHandle, username: String) -> Response {
+
+    if username.trim().is_empty() {
+        return Response {
+            success: false,
+            message: "Invalid user.".into(),
+        };
+    }
+    println!("Deleting user: {}", username);
+
+    let conn = init_db(&app);
+
+    let result = conn.execute(
+        "DELETE FROM users WHERE username = ?1",
+        params![username],
+    );
+
+    match result {
+        Ok(rows) => {
+            println!("Rows affected: {}", rows);
+            Response {
+                success: true,
+                message: "Account deleted.".into(),
+            }
+        }
+        Err(e) => {
+            eprintln!("Deletion failed: {}", e);
+            Response {
+                success: false,
+                message: format!("Deletion failed: {}", e),
+            }
+        }
+    }
+}
+
+#[tauri::command]
 fn login_user(app: tauri::AppHandle, username: String, password: String) -> Response {
     let conn = init_db(&app);
     let mut stmt = conn.prepare("SELECT password FROM users WHERE username = ?1").unwrap();
@@ -86,7 +122,7 @@ fn login_user(app: tauri::AppHandle, username: String, password: String) -> Resp
 fn main() {
 
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![register_user, login_user])
+        .invoke_handler(tauri::generate_handler![register_user, login_user, delete_user])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
