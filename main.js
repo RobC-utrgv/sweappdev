@@ -80,17 +80,76 @@ async function registerUser() {
 }
 
 function initMap() {
-  if (map) return; // Prevent re-initialization
+  if (map) return; 
+  const utrgvCenter = [26.304551, -98.174165];
 
-  map = L.map("map").setView([26.3017, -98.1633], 13); // Edinburg, TX
+  
+  const utrgvBounds = L.latLngBounds(
+    [26.298, -98.182], 
+    [26.312, -98.165]  
+  );
+
+  map = L.map("map", {
+    center: utrgvCenter,
+    zoom: 16,
+    minZoom: 15,
+    maxZoom: 19,
+    maxBounds: utrgvBounds,
+    maxBoundsViscosity: 1.0,
+    zoomControl: true,
+  });
 
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     attribution: "&copy; OpenStreetMap contributors",
   }).addTo(map);
 
-  L.marker([26.3017, -98.1633])
+  fetch("./assets/utrgv_buildings.geojson")
+  .then(res => res.json())
+  .then(data => {
+    L.geoJSON(data, {
+      style: feature => ({
+        color: "#f97316",
+        weight: 2,
+        fillColor: "#fdba74",
+        fillOpacity: 0.6
+      }),
+      onEachFeature: (feature, layer) => {
+        
+        const buildingName = feature.properties.name || "Unnamed Building";
+
+        const popupHtml = `
+          <div style="min-width:150px">
+            <strong>${buildingName}</strong><br><br>
+            <button 
+              class="locate-events-btn"
+              data-building="${buildingName}"
+              style="
+                padding:6px 10px;
+                border-radius:6px;
+                border:none;
+                background:#f97316;
+                color:white;
+                cursor:pointer;
+                width:100%;
+              "
+            >
+              Locate Events 
+            </button>
+          </div>
+        `;
+
+        layer.bindPopup(popupHtml);
+
+      }
+    }).addTo(map);
+  })
+  .catch(err => console.error("Failed to load GeoJSON:", err));
+
+  // Main campus marker
+  L.marker(utrgvCenter)
     .addTo(map)
-    .bindPopup("You are here")
+    .bindPopup("<strong>UTRGV Edinburg Campus</strong>")
+    .openPopup();
 }
 
 function showDashboard(username) {
@@ -110,6 +169,11 @@ function initTheme() {
 }
 
 
+function handleLocateEvents(buildingName) {
+  alert(`Finding events in: ${buildingName}`);
+}
+
+
 settingsBtn.onclick = () => {
   settingsDropdown.style.display =
     settingsDropdown.style.display === "block" ? "none" : "block";
@@ -118,6 +182,10 @@ settingsBtn.onclick = () => {
 document.addEventListener("click", (e) => {
   if (!e.target.closest(".settings-container")) {
     settingsDropdown.style.display = "none";
+  }
+  if (e.target.classList.contains("locate-events-btn")) {
+    const building = e.target.dataset.building;
+    handleLocateEvents(building);
   }
 });
 
