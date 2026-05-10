@@ -54,7 +54,7 @@ Campus Connect is a social application specifically designed for students at UTR
 - Filters
 - Pin details popup
 
-### Sprint 8 — Final Polish
+### Sprint 7 — Final Polish
 - UI improvements
 - Documentation
 - Final presentation
