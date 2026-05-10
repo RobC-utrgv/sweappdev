@@ -12,8 +12,7 @@ Campus Connect is a social application specifically designed for students at UTR
 ## Core Features
 - **Social Feed:** Create and delete posts; like/comment and interact with other students.
 - **Events:** Browse, create, and join events.
-- **Campus Map:** A map showing live events, printers, vending machines, and key campus locations.
-- **Emergency Quick Access:** One-tap access to campus security or emergency dial.
+- **Campus Map:** A map showing live events and key campus locations.
 - **User Profiles:** Basic student profiles with editable information.
 
 ---
@@ -64,6 +63,6 @@ Campus Connect is a social application specifically designed for students at UTR
 
 ## Team Roles Set Up
   
-- **Developer:** Xeth Cervantes
+- **Developer:** Robert Creps
 - **Designer:** Emma Vazquez
-- **Tester:** Robert creps 
+- **Tester:** Xeth Cervantes
