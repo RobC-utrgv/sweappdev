@@ -275,6 +275,29 @@ fn respond_to_friend_request(
 }
 
 #[tauri::command]
+fn get_friends(app: tauri::AppHandle, username: String) -> Vec<String> {
+    let conn = init_db(&app);
+
+    let mut stmt = conn.prepare(
+        "SELECT 
+            CASE 
+                WHEN sender = ?1 THEN receiver 
+                ELSE sender 
+            END AS friend
+         FROM friend_requests
+         WHERE (sender = ?1 OR receiver = ?1)
+         AND status = 'accepted'"
+    ).unwrap();
+
+    stmt.query_map(params![username], |row| {
+        row.get(0)
+    })
+    .unwrap()
+    .filter_map(Result::ok)
+    .collect()
+}
+
+#[tauri::command]
 fn delete_event(
     app: tauri::AppHandle,
     event_id: i32,
@@ -328,6 +351,7 @@ fn main() {
             send_friend_request,
             get_incoming_requests,
             respond_to_friend_request,
+            get_friends,
             delete_event
         ])
         .run(tauri::generate_context!())

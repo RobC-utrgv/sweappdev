@@ -1,25 +1,30 @@
 import { invoke } from "@tauri-apps/api/core";
 import L from "leaflet";
-
 import "leaflet/dist/leaflet.css";
-
-
 
 const auth = document.getElementById("auth");
 const register = document.getElementById("register");
 const dashboard = document.getElementById("dashboard");
+const friendsPage = document.getElementById("friendsPage");
+const addEventPage = document.getElementById("addEventPage");
+
 const message = document.getElementById("message");
 const registerMessage = document.getElementById("registerMessage");
 const welcome = document.getElementById("welcome");
+
 const settingsBtn = document.getElementById("settingsBtn");
 const settingsDropdown = document.getElementById("settingsDropdown");
 const deleteAccountBtn = document.getElementById("deleteAccountBtn");
-const addEventPage = document.getElementById("addEventPage");
+
 const goToAddEventBtn = document.getElementById("goToAddEventBtn");
-const buildingLayers = {};
-const friendsPage = document.getElementById("friendsPage");
 const goToFriendsBtn = document.getElementById("goToFriendsBtn");
 
+const friendUsernameInput = document.getElementById("friendUsernameInput");
+const friendsList = document.getElementById("friendsList");
+const incomingRequests = document.getElementById("incomingRequests");
+
+const buildingLayers = {};
+let friendMarkers = [];
 
 let map = null;
 let currentUser = null;
@@ -31,7 +36,6 @@ function hideAll() {
   friendsPage.classList.add("hidden");
   addEventPage.classList.add("hidden");
 }
-
 
 function showLogin() {
   hideAll();
@@ -46,7 +50,6 @@ function showRegister() {
   registerMessage.textContent = "";
   registerMessage.className = "";
 }
-
 
 async function login() {
   const username = document.getElementById("username").value.trim();
@@ -86,13 +89,13 @@ async function registerUser() {
 }
 
 function initMap() {
-  if (map) return; 
+  if (map) return;
+
   const utrgvCenter = [26.304551, -98.174165];
 
-  
   const utrgvBounds = L.latLngBounds(
-    [26.298, -98.182], 
-    [26.312, -98.165]  
+    [26.298, -98.182],
+    [26.312, -98.165]
   );
 
   map = L.map("map", {
@@ -110,58 +113,40 @@ function initMap() {
   }).addTo(map);
 
   fetch("./assets/utrgv_buildings.geojson")
-  .then(res => res.json())
-  .then(data => {
+    .then((res) => res.json())
+    .then((data) => {
+      const buildingSelect = document.getElementById("eventBuilding");
+      buildingSelect.innerHTML = '<option value="">Select Building</option>';
 
-    const buildingSelect = document.getElementById("eventBuilding");
-    buildingSelect.innerHTML = '<option value="">Select Building</option>';
+      L.geoJSON(data, {
+        style: () => ({
+          color: "#f97316",
+          weight: 2,
+          fillColor: "#fdba74",
+          fillOpacity: 0.6,
+        }),
+        onEachFeature: (feature, layer) => {
+          const buildingName = feature.properties.name || "Unnamed Building";
+          buildingLayers[buildingName] = layer;
 
-    L.geoJSON(data, {
-      style: feature => ({
-        color: "#f97316",
-        weight: 2,
-        fillColor: "#fdba74",
-        fillOpacity: 0.6
-      }),
-      onEachFeature: (feature, layer) => {
-        
-        const buildingName = feature.properties.name || "Unnamed Building";
-        buildingLayers[buildingName] = layer;
+          const option = document.createElement("option");
+          option.value = buildingName;
+          option.textContent = buildingName;
+          buildingSelect.appendChild(option);
 
-        const option = document.createElement("option");
-        option.value = buildingName;
-        option.textContent = buildingName;
-        buildingSelect.appendChild(option);
+          layer.bindPopup(`
+            <div style="min-width:150px">
+              <strong>${buildingName}</strong><br><br>
+              <button class="locate-events-btn" data-building="${buildingName}">
+                Locate Events
+              </button>
+            </div>
+          `);
+        },
+      }).addTo(map);
+    })
+    .catch((err) => console.error("Failed to load GeoJSON:", err));
 
-        const popupHtml = `
-          <div style="min-width:150px">
-            <strong>${buildingName}</strong><br><br>
-            <button 
-              class="locate-events-btn"
-              data-building="${buildingName}"
-              style="
-                padding:6px 10px;
-                border-radius:6px;
-                border:none;
-                background:#f97316;
-                color:white;
-                cursor:pointer;
-                width:100%;
-              "
-            >
-              Locate Events 
-            </button>
-          </div>
-        `;
-
-        layer.bindPopup(popupHtml);
-
-      }
-    }).addTo(map);
-  })
-  .catch(err => console.error("Failed to load GeoJSON:", err));
-
-  // Main campus marker
   L.marker(utrgvCenter)
     .addTo(map)
     .bindPopup("<strong>UTRGV Edinburg Campus</strong>")
@@ -174,81 +159,12 @@ function showDashboard(username) {
 
   welcome.textContent = `Welcome, ${username}!`;
 
-  // Give the DOM a moment to render before creating map
-  setTimeout(initMap, 0);
-  loadAllEvents();
-}
-
-function focusBuilding(event) {
-  const layer = buildingLayers[event.building];
-  if (!layer) {
-    alert("Building not found on map.");
-    return;
-  }
-
-  map.fitBounds(layer.getBounds());
-
-let popupContent = `
-  <strong>${event.name}</strong><br>
-  ${event.date}<br>
-  Organizer: ${event.organizer}<br>
-  Created by: ${event.created_by}<br><br>
-  ${event.description}
-`;
-
-if (event.created_by === currentUser) {
-  popupContent += `<br><br>
-    <button id="deleteEventPopupBtn">Delete Event</button>
-  `;
-}
-
-layer.openPopup(popupContent);
-
-map.once("popupopen", () => {
-  const btn = document.getElementById("deleteEventPopupBtn");
-  if (!btn) return;
-
-  btn.onclick = async () => {
-    const confirmed = confirm("Delete this event?");
-    if (!confirmed) return;
-
-    const res = await invoke("delete_event", {
-      eventId: event.id,
-      username: currentUser
-    });
-
-    alert(res.message);
+  setTimeout(() => {
+    initMap();
     loadAllEvents();
-    map.closePopup();
-  };
-});
+    loadFriendsOnMap();
+  }, 0);
 }
-
-async function handleLocateEvents(buildingName) {
-  const events = await invoke("get_events_for_building", { building: buildingName });
-
-  if (!events.length) {
-    alert("No events found for this building.");
-    return;
-  }
-
-  alert(
-    events.map(e =>
-      `${e.name}
-  ${e.date}
-  Organizer: ${e.organizer}
-  Created by: ${e.created_by}
-
-  ${e.description}`
-    ).join("\n\n")
-  );
-}
-
-
-settingsBtn.onclick = () => {
-  settingsDropdown.style.display =
-    settingsDropdown.style.display === "block" ? "none" : "block";
-};
 
 async function loadAllEvents() {
   const events = await invoke("get_all_events");
@@ -261,25 +177,20 @@ async function loadAllEvents() {
     return;
   }
 
-  events.forEach(event => {
+  events.forEach((event) => {
     const div = document.createElement("div");
-    div.style.padding = "6px";
-    div.style.cursor = "pointer";
-    div.style.borderBottom = "1px solid #e5e7eb";
+    div.className = "event-card";
 
     div.innerHTML = `
       <strong>${event.name}</strong><br>
-      <span style="font-size:12px">${event.date}</span><br>
-      <span style="font-size:11px; color: #94a3b8;">
-        by ${event.created_by}
-      </span>
+      <span>${event.date}</span><br>
+      <small>by ${event.created_by}</small>
     `;
 
     if (event.created_by === currentUser) {
       const delBtn = document.createElement("button");
       delBtn.textContent = "Delete";
-      delBtn.style.marginTop = "4px";
-      delBtn.style.fontSize = "12px";
+      delBtn.className = "small-btn";
 
       delBtn.onclick = async (e) => {
         e.stopPropagation();
@@ -289,7 +200,7 @@ async function loadAllEvents() {
 
         const res = await invoke("delete_event", {
           eventId: event.id,
-          username: currentUser
+          username: currentUser,
         });
 
         alert(res.message);
@@ -297,30 +208,92 @@ async function loadAllEvents() {
       };
 
       div.appendChild(delBtn);
-    }  
+    }
 
     div.onclick = () => focusBuilding(event);
-
     container.appendChild(div);
   });
 }
 
-async function loadIncomingRequests() {
-  const list = document.getElementById("incomingRequests");
-  list.innerHTML = "";
+function focusBuilding(event) {
+  const layer = buildingLayers[event.building];
 
-  const requests = await invoke("get_incoming_requests", {
-    username: currentUser
-  });
-
-  if (!requests.length) {
-    list.innerHTML = "<p>No requests.</p>";
+  if (!layer) {
+    alert("Building not found on map.");
     return;
   }
 
-  requests.forEach(req => {
+  map.fitBounds(layer.getBounds());
+
+  let popupContent = `
+    <strong>${event.name}</strong><br>
+    ${event.date}<br>
+    Organizer: ${event.organizer}<br>
+    Created by: ${event.created_by}<br><br>
+    ${event.description}
+  `;
+
+  if (event.created_by === currentUser) {
+    popupContent += `<br><br><button id="deleteEventPopupBtn">Delete Event</button>`;
+  }
+
+  layer.openPopup(popupContent);
+
+  map.once("popupopen", () => {
+    const btn = document.getElementById("deleteEventPopupBtn");
+    if (!btn) return;
+
+    btn.onclick = async () => {
+      const confirmed = confirm("Delete this event?");
+      if (!confirmed) return;
+
+      const res = await invoke("delete_event", {
+        eventId: event.id,
+        username: currentUser,
+      });
+
+      alert(res.message);
+      loadAllEvents();
+      map.closePopup();
+    };
+  });
+}
+
+async function handleLocateEvents(buildingName) {
+  const events = await invoke("get_events_for_building", {
+    building: buildingName,
+  });
+
+  if (!events.length) {
+    alert("No events found for this building.");
+    return;
+  }
+
+  alert(
+    events
+      .map(
+        (e) =>
+          `${e.name}\n${e.date}\nOrganizer: ${e.organizer}\nCreated by: ${e.created_by}\n\n${e.description}`
+      )
+      .join("\n\n")
+  );
+}
+
+async function loadIncomingRequests() {
+  incomingRequests.innerHTML = "";
+
+  const requests = await invoke("get_incoming_requests", {
+    username: currentUser,
+  });
+
+  if (!requests.length) {
+    incomingRequests.innerHTML = "<p>No requests.</p>";
+    return;
+  }
+
+  requests.forEach((req) => {
     const div = document.createElement("div");
-    div.style.marginBottom = "8px";
+    div.className = "friend-card";
 
     div.innerHTML = `
       <strong>${req.sender}</strong>
@@ -328,14 +301,97 @@ async function loadIncomingRequests() {
       <button data-id="${req.id}" data-accept="false">Reject</button>
     `;
 
-    list.appendChild(div);
+    incomingRequests.appendChild(div);
   });
 }
 
-goToFriendsBtn.onclick = () => {
+async function loadFriendsList() {
+  console.log("Loading friends for:", currentUser);
+
+  friendsList.innerHTML = "";
+
+  const friends = await invoke("get_friends", {
+    username: currentUser,
+  });
+
+  console.log("Friends returned:", friends);
+
+  const title = document.createElement("h3");
+  title.textContent = "Your Friends";
+  friendsList.appendChild(title);
+
+  if (!friends.length) {
+    friendsList.innerHTML += "<p>No friends yet.</p>";
+    return;
+  }
+
+  friends.forEach((friend) => {
+    const div = document.createElement("div");
+    div.style.padding = "10px";
+    div.style.marginTop = "8px";
+    div.style.border = "1px solid #f97316";
+    div.style.borderRadius = "10px";
+    div.style.background = "#111827";
+    div.style.color = "white";
+    div.innerHTML = `<strong>${friend}</strong><br><span>📍 On campus</span>`;
+
+    friendsList.appendChild(div);
+  });
+}
+
+function clearFriendMarkers() {
+  friendMarkers.forEach((marker) => map.removeLayer(marker));
+  friendMarkers = [];
+}
+
+async function loadFriendsOnMap() {
+  if (!map || !currentUser) return;
+
+  clearFriendMarkers();
+
+  const friends = await invoke("get_friends", {
+    username: currentUser,
+  });
+
+  friends.forEach((friend, index) => {
+    const fakeLocations = [
+      [26.3048, -98.1741],
+      [26.3057, -98.1727],
+      [26.3036, -98.1752],
+      [26.3063, -98.1738],
+    ];
+
+    const location = fakeLocations[index % fakeLocations.length];
+
+    const marker = L.marker(location)
+      .addTo(map)
+      .bindPopup(`
+        <strong>${friend}</strong><br>
+        <span>📍 On campus</span><br>
+        <span>💬 Status: Studying</span>
+      `);
+
+    friendMarkers.push(marker);
+  });
+}
+
+settingsBtn.onclick = () => {
+  settingsDropdown.style.display =
+    settingsDropdown.style.display === "block" ? "none" : "block";
+};
+
+goToFriendsBtn.onclick = async () => {
   hideAll();
+
   friendsPage.classList.remove("hidden");
-  loadIncomingRequests();
+
+  alert("Friends page loaded");
+
+  await loadIncomingRequests();
+  await loadFriendsList();
+
+  console.log("friendsList element:", friendsList);
+  console.log("friendsList innerHTML:", friendsList.innerHTML);
 };
 
 document.getElementById("sendFriendRequestBtn").onclick = async () => {
@@ -345,10 +401,11 @@ document.getElementById("sendFriendRequestBtn").onclick = async () => {
 
   const res = await invoke("send_friend_request", {
     sender: currentUser,
-    receiver
+    receiver,
   });
 
   alert(res.message);
+  friendUsernameInput.value = "";
 };
 
 document.getElementById("backToDashboardBtn").onclick = () => {
@@ -362,7 +419,7 @@ document.getElementById("submitEventBtn").onclick = async () => {
     date: eventDate.value,
     description: eventDescription.value,
     building: eventBuilding.value,
-    createdBy: currentUser
+    createdBy: currentUser,
   });
 
   alert(response.message);
@@ -373,12 +430,17 @@ document.getElementById("submitEventBtn").onclick = async () => {
 };
 
 document.addEventListener("click", async (e) => {
-  if (e.target.dataset.id) {
-    await invoke("respond_to_friend_request", {
+  if (e.target.dataset.id && e.target.dataset.accept) {
+    const res = await invoke("respond_to_friend_request", {
       requestId: parseInt(e.target.dataset.id),
-      accept: e.target.dataset.accept === "true"
+      accept: e.target.dataset.accept === "true",
     });
-    loadIncomingRequests();
+
+    alert(res.message);
+
+    await loadIncomingRequests();
+    await loadFriendsList();
+    await loadFriendsOnMap();
   }
 });
 
@@ -386,6 +448,7 @@ document.addEventListener("click", (e) => {
   if (!e.target.closest(".settings-container")) {
     settingsDropdown.style.display = "none";
   }
+
   if (e.target.classList.contains("locate-events-btn")) {
     const building = e.target.dataset.building;
     handleLocateEvents(building);
@@ -399,33 +462,21 @@ deleteAccountBtn.onclick = async () => {
     return;
   }
 
-  const confirmed = confirm(
-    "This will permanently delete your account.\n\nThis action cannot be undone."
-  );
+  const confirmed = confirm("This will permanently delete your account.");
   if (!confirmed) return;
 
-  try {
-    console.log("Deleting account for:", currentUser);
+  const response = await invoke("delete_user", {
+    username: currentUser,
+  });
 
-    const response = await invoke("delete_user", {
-      username: currentUser
-    });
+  alert(response.message);
 
-    console.log("Delete response:", response);
-
-    if (response.success) {
-      alert("Account deleted.");
-      currentUser = null;
-      showLogin();
-    } else {
-      alert(response.message);
-    }
-  } catch (err) {
-    console.error("Delete account failed:", err);
-    alert("Failed to delete account. See console for details.");
+  if (response.success) {
+    currentUser = null;
+    showLogin();
   }
 };
-``
+
 goToAddEventBtn.onclick = () => {
   hideAll();
   addEventPage.classList.remove("hidden");
@@ -440,4 +491,5 @@ document.getElementById("submitRegisterBtn").onclick = registerUser;
 document.getElementById("goToRegisterBtn").onclick = showRegister;
 document.getElementById("backToLoginBtn").onclick = showLogin;
 document.getElementById("logoutBtn").onclick = showLogin;
+
 showLogin();
