@@ -23,6 +23,15 @@ struct Event {
     date: String,
     description: String,
     building: String,
+    created_by: String,
+}
+
+#[derive(Serialize)]
+struct FriendRequest {
+    id: i32,
+    sender: String,
+    receiver: String,
+    status: String,
 }
 
 fn init_db(app: &tauri::AppHandle) -> Connection {
@@ -59,7 +68,18 @@ fn init_db(app: &tauri::AppHandle) -> Connection {
         [],
     ).unwrap();
 
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS friend_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sender TEXT NOT NULL,
+            receiver TEXT NOT NULL,
+            status TEXT NOT NULL,
+            UNIQUE(sender, receiver)
+        )",
+        [],
+    ).unwrap();
     conn
+
 }
 
 #[tauri::command]
@@ -130,7 +150,7 @@ fn get_events_for_building(app: tauri::AppHandle, building: String) -> Vec<Event
     let conn = init_db(&app);
 
     let mut stmt = conn.prepare(
-        "SELECT id, name, organizer, date, description, building
+        "SELECT id, name, organizer, date, description, building, created_by
          FROM events WHERE building = ?1"
     ).unwrap();
 
@@ -142,6 +162,7 @@ fn get_events_for_building(app: tauri::AppHandle, building: String) -> Vec<Event
             date: row.get(3)?,
             description: row.get(4)?,
             building: row.get(5)?,
+            created_by: row.get(6)?,
         })
     })
     .unwrap()
@@ -154,7 +175,7 @@ fn get_all_events(app: tauri::AppHandle) -> Vec<Event> {
     let conn = init_db(&app);
 
     let mut stmt = conn.prepare(
-        "SELECT id, name, organizer, date, description, building FROM events"
+        "SELECT id, name, organizer, date, description, building, created_by FROM events"
     ).unwrap();
 
     stmt.query_map([], |row| {
@@ -165,11 +186,134 @@ fn get_all_events(app: tauri::AppHandle) -> Vec<Event> {
             date: row.get(3)?,
             description: row.get(4)?,
             building: row.get(5)?,
+            created_by: row.get(6)?,
         })
     })
     .unwrap()
     .filter_map(Result::ok)
     .collect()
+}
+
+#[tauri::command]
+fn send_friend_request(
+    app: tauri::AppHandle,
+    sender: String,
+    receiver: String,
+) -> Response {
+    if sender == receiver {
+        return Response {
+            success: false,
+            message: "You cannot add yourself.".into(),
+        };
+    }
+
+    let conn = init_db(&app);
+
+    let result = conn.execute(
+        "INSERT INTO friend_requests (sender, receiver, status)
+         VALUES (?1, ?2, 'pending')",
+        params![sender, receiver],
+    );
+
+    match result {
+        Ok(_) => Response {
+            success: true,
+            message: "Friend request sent.".into(),
+        },
+        Err(_) => Response {
+            success: false,
+            message: "Request already exists.".into(),
+        },
+    }
+}
+
+#[tauri::command]
+fn get_incoming_requests(
+    app: tauri::AppHandle,
+    username: String,
+) -> Vec<FriendRequest> {
+    let conn = init_db(&app);
+
+    let mut stmt = conn.prepare(
+        "SELECT id, sender, receiver, status
+         FROM friend_requests
+         WHERE receiver = ?1 AND status = 'pending'"
+    ).unwrap();
+
+    stmt.query_map(params![username], |row| {
+        Ok(FriendRequest {
+            id: row.get(0)?,
+            sender: row.get(1)?,
+            receiver: row.get(2)?,
+            status: row.get(3)?,
+        })
+    })
+    .unwrap()
+    .filter_map(Result::ok)
+    .collect()
+}
+
+#[tauri::command]
+fn respond_to_friend_request(
+    app: tauri::AppHandle,
+    request_id: i32,
+    accept: bool,
+) -> Response {
+    let conn = init_db(&app);
+
+    let status = if accept { "accepted" } else { "rejected" };
+
+    conn.execute(
+        "UPDATE friend_requests SET status = ?1 WHERE id = ?2",
+        params![status, request_id],
+    ).unwrap();
+
+    Response {
+        success: true,
+        message: "Request updated.".into(),
+    }
+}
+
+#[tauri::command]
+fn delete_event(
+    app: tauri::AppHandle,
+    event_id: i32,
+    username: String,
+) -> Response {
+    let conn = init_db(&app);
+
+    // Check ownership
+    let mut stmt = conn.prepare(
+        "SELECT created_by FROM events WHERE id = ?1"
+    ).unwrap();
+
+    let mut rows = stmt.query(params![event_id]).unwrap();
+
+    if let Some(row) = rows.next().unwrap() {
+        let owner: String = row.get(0).unwrap();
+
+        if owner != username {
+            return Response {
+                success: false,
+                message: "You are not allowed to delete this event.".into(),
+            };
+        }
+
+        conn.execute(
+            "DELETE FROM events WHERE id = ?1",
+            params![event_id],
+        ).unwrap();
+
+        return Response {
+            success: true,
+            message: "Event deleted.".into(),
+        };
+    }
+
+    Response {
+        success: false,
+        message: "Event not found.".into(),
+    }
 }
 
 fn main() {
@@ -180,7 +324,11 @@ fn main() {
             delete_user,
             add_event,
             get_all_events,
-            get_events_for_building
+            get_events_for_building,
+            send_friend_request,
+            get_incoming_requests,
+            respond_to_friend_request,
+            delete_event
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

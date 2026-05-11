@@ -8,8 +8,6 @@ import "leaflet/dist/leaflet.css";
 const auth = document.getElementById("auth");
 const register = document.getElementById("register");
 const dashboard = document.getElementById("dashboard");
-const themeToggle = document.getElementById("themeToggle");
-const root = document.documentElement;
 const message = document.getElementById("message");
 const registerMessage = document.getElementById("registerMessage");
 const welcome = document.getElementById("welcome");
@@ -19,6 +17,9 @@ const deleteAccountBtn = document.getElementById("deleteAccountBtn");
 const addEventPage = document.getElementById("addEventPage");
 const goToAddEventBtn = document.getElementById("goToAddEventBtn");
 const buildingLayers = {};
+const friendsPage = document.getElementById("friendsPage");
+const goToFriendsBtn = document.getElementById("goToFriendsBtn");
+
 
 let map = null;
 let currentUser = null;
@@ -27,6 +28,7 @@ function hideAll() {
   auth.classList.add("hidden");
   register.classList.add("hidden");
   dashboard.classList.add("hidden");
+  friendsPage.classList.add("hidden");
   addEventPage.classList.add("hidden");
 }
 
@@ -186,20 +188,41 @@ function focusBuilding(event) {
 
   map.fitBounds(layer.getBounds());
 
-  layer.openPopup(`
-    <strong>${event.name}</strong><br>
-    ${event.date}<br>
-    ${event.organizer}<br><br>
-    ${event.description}
-  `);
+let popupContent = `
+  <strong>${event.name}</strong><br>
+  ${event.date}<br>
+  Organizer: ${event.organizer}<br>
+  Created by: ${event.created_by}<br><br>
+  ${event.description}
+`;
+
+if (event.created_by === currentUser) {
+  popupContent += `<br><br>
+    <button id="deleteEventPopupBtn">Delete Event</button>
+  `;
 }
 
-function initTheme() {
-  const storedTheme = localStorage.getItem("theme") || "light";
-  root.setAttribute("data-theme", storedTheme);
-  themeToggle.checked = storedTheme === "dark";
-}
+layer.openPopup(popupContent);
 
+map.once("popupopen", () => {
+  const btn = document.getElementById("deleteEventPopupBtn");
+  if (!btn) return;
+
+  btn.onclick = async () => {
+    const confirmed = confirm("Delete this event?");
+    if (!confirmed) return;
+
+    const res = await invoke("delete_event", {
+      eventId: event.id,
+      username: currentUser
+    });
+
+    alert(res.message);
+    loadAllEvents();
+    map.closePopup();
+  };
+});
+}
 
 async function handleLocateEvents(buildingName) {
   const events = await invoke("get_events_for_building", { building: buildingName });
@@ -211,7 +234,12 @@ async function handleLocateEvents(buildingName) {
 
   alert(
     events.map(e =>
-      `${e.name}\n${e.date}\nOrganizer: ${e.organizer}\n${e.description}`
+      `${e.name}
+  ${e.date}
+  Organizer: ${e.organizer}
+  Created by: ${e.created_by}
+
+  ${e.description}`
     ).join("\n\n")
   );
 }
@@ -241,8 +269,35 @@ async function loadAllEvents() {
 
     div.innerHTML = `
       <strong>${event.name}</strong><br>
-      <span style="font-size:12px">${event.date}</span>
+      <span style="font-size:12px">${event.date}</span><br>
+      <span style="font-size:11px; color: #94a3b8;">
+        by ${event.created_by}
+      </span>
     `;
+
+    if (event.created_by === currentUser) {
+      const delBtn = document.createElement("button");
+      delBtn.textContent = "Delete";
+      delBtn.style.marginTop = "4px";
+      delBtn.style.fontSize = "12px";
+
+      delBtn.onclick = async (e) => {
+        e.stopPropagation();
+
+        const confirmed = confirm("Delete this event permanently?");
+        if (!confirmed) return;
+
+        const res = await invoke("delete_event", {
+          eventId: event.id,
+          username: currentUser
+        });
+
+        alert(res.message);
+        loadAllEvents();
+      };
+
+      div.appendChild(delBtn);
+    }  
 
     div.onclick = () => focusBuilding(event);
 
@@ -250,6 +305,55 @@ async function loadAllEvents() {
   });
 }
 
+async function loadIncomingRequests() {
+  const list = document.getElementById("incomingRequests");
+  list.innerHTML = "";
+
+  const requests = await invoke("get_incoming_requests", {
+    username: currentUser
+  });
+
+  if (!requests.length) {
+    list.innerHTML = "<p>No requests.</p>";
+    return;
+  }
+
+  requests.forEach(req => {
+    const div = document.createElement("div");
+    div.style.marginBottom = "8px";
+
+    div.innerHTML = `
+      <strong>${req.sender}</strong>
+      <button data-id="${req.id}" data-accept="true">Accept</button>
+      <button data-id="${req.id}" data-accept="false">Reject</button>
+    `;
+
+    list.appendChild(div);
+  });
+}
+
+goToFriendsBtn.onclick = () => {
+  hideAll();
+  friendsPage.classList.remove("hidden");
+  loadIncomingRequests();
+};
+
+document.getElementById("sendFriendRequestBtn").onclick = async () => {
+  const receiver = friendUsernameInput.value.trim();
+
+  if (!receiver) return alert("Enter a username.");
+
+  const res = await invoke("send_friend_request", {
+    sender: currentUser,
+    receiver
+  });
+
+  alert(res.message);
+};
+
+document.getElementById("backToDashboardBtn").onclick = () => {
+  showDashboard(currentUser);
+};
 
 document.getElementById("submitEventBtn").onclick = async () => {
   const response = await invoke("add_event", {
@@ -267,6 +371,16 @@ document.getElementById("submitEventBtn").onclick = async () => {
     showDashboard(currentUser);
   }
 };
+
+document.addEventListener("click", async (e) => {
+  if (e.target.dataset.id) {
+    await invoke("respond_to_friend_request", {
+      requestId: parseInt(e.target.dataset.id),
+      accept: e.target.dataset.accept === "true"
+    });
+    loadIncomingRequests();
+  }
+});
 
 document.addEventListener("click", (e) => {
   if (!e.target.closest(".settings-container")) {
@@ -311,12 +425,6 @@ deleteAccountBtn.onclick = async () => {
     alert("Failed to delete account. See console for details.");
   }
 };
-
-themeToggle.addEventListener("change", () => {
-  const theme = themeToggle.checked ? "dark" : "light";
-  root.setAttribute("data-theme", theme);
-  localStorage.setItem("theme", theme);
-});
 ``
 goToAddEventBtn.onclick = () => {
   hideAll();
@@ -332,5 +440,4 @@ document.getElementById("submitRegisterBtn").onclick = registerUser;
 document.getElementById("goToRegisterBtn").onclick = showRegister;
 document.getElementById("backToLoginBtn").onclick = showLogin;
 document.getElementById("logoutBtn").onclick = showLogin;
-initTheme();
 showLogin();
