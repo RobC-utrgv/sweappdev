@@ -23,6 +23,7 @@ struct Event {
     date: String,
     description: String,
     building: String,
+    created_by: String,
 }
 
 fn init_db(app: &tauri::AppHandle) -> Connection {
@@ -130,7 +131,7 @@ fn get_events_for_building(app: tauri::AppHandle, building: String) -> Vec<Event
     let conn = init_db(&app);
 
     let mut stmt = conn.prepare(
-        "SELECT id, name, organizer, date, description, building
+        "SELECT id, name, organizer, date, description, building, created_by
          FROM events WHERE building = ?1"
     ).unwrap();
 
@@ -142,6 +143,7 @@ fn get_events_for_building(app: tauri::AppHandle, building: String) -> Vec<Event
             date: row.get(3)?,
             description: row.get(4)?,
             building: row.get(5)?,
+            created_by: row.get(6)?,
         })
     })
     .unwrap()
@@ -154,7 +156,7 @@ fn get_all_events(app: tauri::AppHandle) -> Vec<Event> {
     let conn = init_db(&app);
 
     let mut stmt = conn.prepare(
-        "SELECT id, name, organizer, date, description, building FROM events"
+        "SELECT id, name, organizer, date, description, building, created_by FROM events"
     ).unwrap();
 
     stmt.query_map([], |row| {
@@ -165,6 +167,7 @@ fn get_all_events(app: tauri::AppHandle) -> Vec<Event> {
             date: row.get(3)?,
             description: row.get(4)?,
             building: row.get(5)?,
+            created_by: row.get(6)?,
         })
     })
     .unwrap()

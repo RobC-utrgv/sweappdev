@@ -186,12 +186,13 @@ function focusBuilding(event) {
 
   map.fitBounds(layer.getBounds());
 
-  layer.openPopup(`
-    <strong>${event.name}</strong><br>
-    ${event.date}<br>
-    ${event.organizer}<br><br>
-    ${event.description}
-  `);
+layer.openPopup(`
+  <strong>${event.name}</strong><br>
+  ${event.date}<br>
+  Organizer: ${event.organizer}<br>
+  Created by: ${event.created_by}<br><br>
+  ${event.description}
+`);
 }
 
 function initTheme() {
@@ -211,7 +212,12 @@ async function handleLocateEvents(buildingName) {
 
   alert(
     events.map(e =>
-      `${e.name}\n${e.date}\nOrganizer: ${e.organizer}\n${e.description}`
+      `${e.name}
+  ${e.date}
+  Organizer: ${e.organizer}
+  Created by: ${e.created_by}
+
+  ${e.description}`
     ).join("\n\n")
   );
 }
@@ -240,9 +246,12 @@ async function loadAllEvents() {
     div.style.borderBottom = "1px solid #e5e7eb";
 
     div.innerHTML = `
-      <strong>${event.name}</strong><br>
-      <span style="font-size:12px">${event.date}</span>
-    `;
+  <strong>${event.name}</strong><br>
+  <span style="font-size:12px">${event.date}</span><br>
+  <span style="font-size:11px; color: #6b7280;">
+    by ${event.created_by}
+  </span>
+`;
 
     div.onclick = () => focusBuilding(event);
 
