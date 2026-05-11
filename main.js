@@ -305,6 +305,31 @@ async function loadAllEvents() {
   });
 }
 
+
+
+async function loadFriends() {
+  const list = document.getElementById("friendsList");
+  list.innerHTML = "";
+
+  const friends = await invoke("get_friends", {
+    username: currentUser
+  });
+
+  if (!friends.length) {
+    list.innerHTML = "<p>No friends yet.</p>";
+    return;
+  }
+
+  friends.forEach(name => {
+    const div = document.createElement("div");
+    div.style.marginBottom = "8px";
+    div.textContent = name;
+    list.appendChild(div);
+  });
+}
+
+
+
 async function loadIncomingRequests() {
   const list = document.getElementById("incomingRequests");
   list.innerHTML = "";
@@ -335,8 +360,10 @@ async function loadIncomingRequests() {
 goToFriendsBtn.onclick = () => {
   hideAll();
   friendsPage.classList.remove("hidden");
+  loadFriends();
   loadIncomingRequests();
 };
+
 
 document.getElementById("sendFriendRequestBtn").onclick = async () => {
   const receiver = friendUsernameInput.value.trim();
@@ -379,6 +406,7 @@ document.addEventListener("click", async (e) => {
       accept: e.target.dataset.accept === "true"
     });
     loadIncomingRequests();
+    loadFriends();
   }
 });
 

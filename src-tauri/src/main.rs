@@ -54,7 +54,7 @@ fn init_db(app: &tauri::AppHandle) -> Connection {
         )",
         [],
     ).unwrap();
-// path of database: C:\Users\<User>\AppData\Roaming\<YourApp>\users.db
+
     conn.execute(
         "CREATE TABLE IF NOT EXISTS events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -78,8 +78,8 @@ fn init_db(app: &tauri::AppHandle) -> Connection {
         )",
         [],
     ).unwrap();
-    conn
 
+    conn
 }
 
 #[tauri::command]
@@ -274,6 +274,33 @@ fn respond_to_friend_request(
     }
 }
 
+//
+// ⭐ ADDED FUNCTION — NOTHING ELSE CHANGED
+//
+#[tauri::command]
+fn get_friends(app: tauri::AppHandle, username: String) -> Vec<String> {
+    let conn = init_db(&app);
+
+    let mut stmt = conn.prepare(
+        "SELECT 
+            CASE 
+                WHEN sender = ?1 THEN receiver
+                ELSE sender
+            END AS friend
+         FROM friend_requests
+         WHERE (sender = ?1 OR receiver = ?1)
+         AND status = 'accepted'"
+    ).unwrap();
+
+    stmt.query_map(params![username], |row| {
+        let friend: String = row.get(0)?;
+        Ok(friend)
+    })
+    .unwrap()
+    .filter_map(Result::ok)
+    .collect()
+}
+
 #[tauri::command]
 fn delete_event(
     app: tauri::AppHandle,
@@ -282,7 +309,6 @@ fn delete_event(
 ) -> Response {
     let conn = init_db(&app);
 
-    // Check ownership
     let mut stmt = conn.prepare(
         "SELECT created_by FROM events WHERE id = ?1"
     ).unwrap();
@@ -328,6 +354,7 @@ fn main() {
             send_friend_request,
             get_incoming_requests,
             respond_to_friend_request,
+            get_friends,   // ⭐ ADDED HERE
             delete_event
         ])
         .run(tauri::generate_context!())

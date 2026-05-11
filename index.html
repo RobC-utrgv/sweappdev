@@ -121,14 +121,14 @@
   }
 
 
-  .card {
-    background: var(--card-bg);
-    width: 320px;
-    padding: 24px;
-    border-radius: 12px;
-    border: 1px solid var(--border);
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
-  }
+.card {
+  background: var(--card-bg);
+  width: 320px;
+  padding: 24px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+}
 
   .hidden {
     display: none;
@@ -264,8 +264,13 @@
       Send Friend Request
     </button>
 
+    
+    <h3>Your Friends: </h3>
+    <div id="friendsList"></div>
+    
     <h3>Incoming Requests</h3>
     <div id="incomingRequests"></div>
+    
 
     <button id="backToDashboardBtn" class="secondary">
       Back
