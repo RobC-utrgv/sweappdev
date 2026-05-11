@@ -16,7 +16,9 @@ const welcome = document.getElementById("welcome");
 const settingsBtn = document.getElementById("settingsBtn");
 const settingsDropdown = document.getElementById("settingsDropdown");
 const deleteAccountBtn = document.getElementById("deleteAccountBtn");
-
+const addEventPage = document.getElementById("addEventPage");
+const goToAddEventBtn = document.getElementById("goToAddEventBtn");
+const buildingLayers = {};
 
 let map = null;
 let currentUser = null;
@@ -25,7 +27,9 @@ function hideAll() {
   auth.classList.add("hidden");
   register.classList.add("hidden");
   dashboard.classList.add("hidden");
+  addEventPage.classList.add("hidden");
 }
+
 
 function showLogin() {
   hideAll();
@@ -106,6 +110,10 @@ function initMap() {
   fetch("./assets/utrgv_buildings.geojson")
   .then(res => res.json())
   .then(data => {
+
+    const buildingSelect = document.getElementById("eventBuilding");
+    buildingSelect.innerHTML = '<option value="">Select Building</option>';
+
     L.geoJSON(data, {
       style: feature => ({
         color: "#f97316",
@@ -116,6 +124,12 @@ function initMap() {
       onEachFeature: (feature, layer) => {
         
         const buildingName = feature.properties.name || "Unnamed Building";
+        buildingLayers[buildingName] = layer;
+
+        const option = document.createElement("option");
+        option.value = buildingName;
+        option.textContent = buildingName;
+        buildingSelect.appendChild(option);
 
         const popupHtml = `
           <div style="min-width:150px">
@@ -160,6 +174,24 @@ function showDashboard(username) {
 
   // Give the DOM a moment to render before creating map
   setTimeout(initMap, 0);
+  loadAllEvents();
+}
+
+function focusBuilding(event) {
+  const layer = buildingLayers[event.building];
+  if (!layer) {
+    alert("Building not found on map.");
+    return;
+  }
+
+  map.fitBounds(layer.getBounds());
+
+  layer.openPopup(`
+    <strong>${event.name}</strong><br>
+    ${event.date}<br>
+    ${event.organizer}<br><br>
+    ${event.description}
+  `);
 }
 
 function initTheme() {
@@ -169,14 +201,71 @@ function initTheme() {
 }
 
 
-function handleLocateEvents(buildingName) {
-  alert(`Finding events in: ${buildingName}`);
+async function handleLocateEvents(buildingName) {
+  const events = await invoke("get_events_for_building", { building: buildingName });
+
+  if (!events.length) {
+    alert("No events found for this building.");
+    return;
+  }
+
+  alert(
+    events.map(e =>
+      `${e.name}\n${e.date}\nOrganizer: ${e.organizer}\n${e.description}`
+    ).join("\n\n")
+  );
 }
 
 
 settingsBtn.onclick = () => {
   settingsDropdown.style.display =
     settingsDropdown.style.display === "block" ? "none" : "block";
+};
+
+async function loadAllEvents() {
+  const events = await invoke("get_all_events");
+  const container = document.getElementById("eventItems");
+
+  container.innerHTML = "";
+
+  if (!events.length) {
+    container.innerHTML = "<p style='font-size:12px'>No events</p>";
+    return;
+  }
+
+  events.forEach(event => {
+    const div = document.createElement("div");
+    div.style.padding = "6px";
+    div.style.cursor = "pointer";
+    div.style.borderBottom = "1px solid #e5e7eb";
+
+    div.innerHTML = `
+      <strong>${event.name}</strong><br>
+      <span style="font-size:12px">${event.date}</span>
+    `;
+
+    div.onclick = () => focusBuilding(event);
+
+    container.appendChild(div);
+  });
+}
+
+
+document.getElementById("submitEventBtn").onclick = async () => {
+  const response = await invoke("add_event", {
+    name: eventName.value,
+    organizer: eventOrganizer.value,
+    date: eventDate.value,
+    description: eventDescription.value,
+    building: eventBuilding.value,
+    createdBy: currentUser
+  });
+
+  alert(response.message);
+
+  if (response.success) {
+    showDashboard(currentUser);
+  }
 };
 
 document.addEventListener("click", (e) => {
@@ -229,7 +318,14 @@ themeToggle.addEventListener("change", () => {
   localStorage.setItem("theme", theme);
 });
 ``
+goToAddEventBtn.onclick = () => {
+  hideAll();
+  addEventPage.classList.remove("hidden");
+};
 
+document.getElementById("cancelEventBtn").onclick = () => {
+  showDashboard(currentUser);
+};
 
 document.getElementById("loginBtn").onclick = login;
 document.getElementById("submitRegisterBtn").onclick = registerUser;

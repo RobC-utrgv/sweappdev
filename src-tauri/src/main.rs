@@ -8,7 +8,6 @@ use tauri::Manager;
 use rusqlite::{Connection, params};
 use serde::Serialize;
 use bcrypt::{hash, verify, DEFAULT_COST};
-use tauri::path::BaseDirectory;
 
 #[derive(Serialize)]
 struct Response {
@@ -16,7 +15,16 @@ struct Response {
     message: String,
 }
 
-// Function to initialize database
+#[derive(Serialize)]
+struct Event {
+    id: i32,
+    name: String,
+    organizer: String,
+    date: String,
+    description: String,
+    building: String,
+}
+
 fn init_db(app: &tauri::AppHandle) -> Connection {
     let db_path = app
         .path()
@@ -36,93 +44,144 @@ fn init_db(app: &tauri::AppHandle) -> Connection {
             password TEXT NOT NULL
         )",
         [],
-    ).expect("Failed to create table");
+    ).unwrap();
+// path of database: C:\Users\<User>\AppData\Roaming\<YourApp>\users.db
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            organizer TEXT NOT NULL,
+            date TEXT NOT NULL,
+            description TEXT,
+            building TEXT NOT NULL,
+            created_by TEXT NOT NULL
+        )",
+        [],
+    ).unwrap();
 
     conn
 }
 
-// path of database: C:\Users\<User>\AppData\Roaming\<YourApp>\users.db
-
 #[tauri::command]
 fn register_user(app: tauri::AppHandle, username: String, password: String) -> Response {
     let conn = init_db(&app);
-
-    // Hash the password
     let hashed = hash(password, DEFAULT_COST).unwrap();
 
-    let result = conn.execute(
+    match conn.execute(
         "INSERT INTO users (username, password) VALUES (?1, ?2)",
-        params![username, hashed]
-    );
-
-    match result {
+        params![username, hashed],
+    ) {
         Ok(_) => Response { success: true, message: "User registered!".into() },
         Err(e) => Response { success: false, message: format!("Error: {}", e) },
     }
 }
 
 #[tauri::command]
-fn delete_user(app: tauri::AppHandle, username: String) -> Response {
-
-    if username.trim().is_empty() {
-        return Response {
-            success: false,
-            message: "Invalid user.".into(),
-        };
-    }
-    println!("Deleting user: {}", username);
-
-    let conn = init_db(&app);
-
-    let result = conn.execute(
-        "DELETE FROM users WHERE username = ?1",
-        params![username],
-    );
-
-    match result {
-        Ok(rows) => {
-            println!("Rows affected: {}", rows);
-            Response {
-                success: true,
-                message: "Account deleted.".into(),
-            }
-        }
-        Err(e) => {
-            eprintln!("Deletion failed: {}", e);
-            Response {
-                success: false,
-                message: format!("Deletion failed: {}", e),
-            }
-        }
-    }
-}
-
-#[tauri::command]
 fn login_user(app: tauri::AppHandle, username: String, password: String) -> Response {
     let conn = init_db(&app);
+
     let mut stmt = conn.prepare("SELECT password FROM users WHERE username = ?1").unwrap();
     let mut rows = stmt.query(params![username]).unwrap();
 
     if let Ok(Some(row)) = rows.next() {
         let stored_hash: String = row.get(0).unwrap();
         if verify(password, &stored_hash).unwrap() {
-            return Response { 
-                success: true, 
-                message: "Login successful!".into() 
-            };
+            return Response { success: true, message: "Login successful!".into() };
         }
     }
 
-    Response { 
-        success: false, 
-        message: "Incorrect user or password. Register if not already.".into() 
+    Response { success: false, message: "Incorrect user or password.".into() }
+}
+
+#[tauri::command]
+fn delete_user(app: tauri::AppHandle, username: String) -> Response {
+    let conn = init_db(&app);
+
+    match conn.execute("DELETE FROM users WHERE username = ?1", params![username]) {
+        Ok(_) => Response { success: true, message: "Account deleted.".into() },
+        Err(e) => Response { success: false, message: e.to_string() },
     }
 }
 
-fn main() {
+#[tauri::command]
+fn add_event(
+    app: tauri::AppHandle,
+    name: String,
+    organizer: String,
+    date: String,
+    description: String,
+    building: String,
+    created_by: String,
+) -> Response {
+    let conn = init_db(&app);
 
+    match conn.execute(
+        "INSERT INTO events (name, organizer, date, description, building, created_by)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![name, organizer, date, description, building, created_by],
+    ) {
+        Ok(_) => Response { success: true, message: "Event added.".into() },
+        Err(e) => Response { success: false, message: e.to_string() },
+    }
+}
+
+#[tauri::command]
+fn get_events_for_building(app: tauri::AppHandle, building: String) -> Vec<Event> {
+    let conn = init_db(&app);
+
+    let mut stmt = conn.prepare(
+        "SELECT id, name, organizer, date, description, building
+         FROM events WHERE building = ?1"
+    ).unwrap();
+
+    stmt.query_map(params![building], |row| {
+        Ok(Event {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            organizer: row.get(2)?,
+            date: row.get(3)?,
+            description: row.get(4)?,
+            building: row.get(5)?,
+        })
+    })
+    .unwrap()
+    .filter_map(Result::ok)
+    .collect()
+}
+
+#[tauri::command]
+fn get_all_events(app: tauri::AppHandle) -> Vec<Event> {
+    let conn = init_db(&app);
+
+    let mut stmt = conn.prepare(
+        "SELECT id, name, organizer, date, description, building FROM events"
+    ).unwrap();
+
+    stmt.query_map([], |row| {
+        Ok(Event {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            organizer: row.get(2)?,
+            date: row.get(3)?,
+            description: row.get(4)?,
+            building: row.get(5)?,
+        })
+    })
+    .unwrap()
+    .filter_map(Result::ok)
+    .collect()
+}
+
+fn main() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![register_user, login_user, delete_user])
+        .invoke_handler(tauri::generate_handler![
+            register_user,
+            login_user,
+            delete_user,
+            add_event,
+            get_all_events,
+            get_events_for_building
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
